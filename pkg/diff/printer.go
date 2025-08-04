@@ -4,14 +4,17 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/n0madic/mysql-diff/pkg/output"
 	"github.com/n0madic/mysql-diff/pkg/parser"
 )
 
 // PrintTableDiff prints a human-readable summary of table differences
 func PrintTableDiff(diff *TableDiff, detailed bool) {
-	fmt.Printf("\n%s\n", strings.Repeat("=", 60))
-	fmt.Printf("TABLE DIFF: %s -> %s\n", diff.OldTable.TableName, diff.NewTable.TableName)
-	fmt.Printf("%s\n", strings.Repeat("=", 60))
+	fmt.Printf("\n%s\n", output.BoldText(strings.Repeat("=", 60)))
+	fmt.Printf("TABLE DIFF: %s -> %s\n",
+		output.ColorizeTableName(diff.OldTable.TableName),
+		output.ColorizeTableName(diff.NewTable.TableName))
+	fmt.Printf("%s\n", output.BoldText(strings.Repeat("=", 60)))
 
 	if !diff.HasChanges() {
 		fmt.Println("No changes detected.")
@@ -20,33 +23,35 @@ func PrintTableDiff(diff *TableDiff, detailed bool) {
 
 	// Table name change
 	if diff.TableNameChanged {
-		fmt.Printf("✏️  Table renamed: %s -> %s\n", diff.OldTable.TableName, diff.NewTable.TableName)
+		fmt.Printf("✏️  Table renamed: %s -> %s\n",
+			output.ColorizeTableName(diff.OldTable.TableName),
+			output.ColorizeTableName(diff.NewTable.TableName))
 	}
 
 	// Summary
 	summary := diff.GetSummary()
-	fmt.Println("\nSUMMARY:")
-	fmt.Printf("  Columns: +%d -%d ~%d\n",
-		summary.Columns.Added,
-		summary.Columns.Removed,
-		summary.Columns.Modified)
-	fmt.Printf("  Indexes: +%d -%d ~%d\n",
-		summary.Indexes.Added,
-		summary.Indexes.Removed,
-		summary.Indexes.Modified)
-	fmt.Printf("  Foreign Keys: +%d -%d ~%d\n",
-		summary.ForeignKeys.Added,
-		summary.ForeignKeys.Removed,
-		summary.ForeignKeys.Modified)
+	fmt.Printf("\n%s\n", output.BoldText("SUMMARY:"))
+	fmt.Printf("  Columns: %s %s %s\n",
+		output.GreenText(fmt.Sprintf("+%d", summary.Columns.Added)),
+		output.RedText(fmt.Sprintf("-%d", summary.Columns.Removed)),
+		output.YellowText(fmt.Sprintf("~%d", summary.Columns.Modified)))
+	fmt.Printf("  Indexes: %s %s %s\n",
+		output.GreenText(fmt.Sprintf("+%d", summary.Indexes.Added)),
+		output.RedText(fmt.Sprintf("-%d", summary.Indexes.Removed)),
+		output.YellowText(fmt.Sprintf("~%d", summary.Indexes.Modified)))
+	fmt.Printf("  Foreign Keys: %s %s %s\n",
+		output.GreenText(fmt.Sprintf("+%d", summary.ForeignKeys.Added)),
+		output.RedText(fmt.Sprintf("-%d", summary.ForeignKeys.Removed)),
+		output.YellowText(fmt.Sprintf("~%d", summary.ForeignKeys.Modified)))
 
 	if summary.PrimaryKeyChanged {
-		fmt.Println("  Primary Key: CHANGED")
+		fmt.Printf("  Primary Key: %s\n", output.YellowText("CHANGED"))
 	}
 	if summary.TableOptionsChanged {
-		fmt.Println("  Table Options: CHANGED")
+		fmt.Printf("  Table Options: %s\n", output.YellowText("CHANGED"))
 	}
 	if summary.PartitioningChanged {
-		fmt.Println("  Partitioning: CHANGED")
+		fmt.Printf("  Partitioning: %s\n", output.YellowText("CHANGED"))
 	}
 
 	if !detailed {
@@ -55,15 +60,23 @@ func PrintTableDiff(diff *TableDiff, detailed bool) {
 
 	// Detailed changes
 	if len(diff.ColumnDiffs) > 0 {
-		fmt.Println("\nCOLUMN CHANGES:")
+		fmt.Printf("\n%s\n", output.BoldText("COLUMN CHANGES:"))
 		for _, colDiff := range diff.ColumnDiffs {
 			switch colDiff.ChangeType {
 			case ChangeTypeAdded:
-				fmt.Printf("  + %s: %s\n", colDiff.Name, formatColumn(colDiff.NewColumn))
+				fmt.Printf("  %s %s: %s\n",
+					output.GreenText("+"),
+					output.ColorizeColumnName(colDiff.Name),
+					formatColumn(colDiff.NewColumn))
 			case ChangeTypeRemoved:
-				fmt.Printf("  - %s: %s\n", colDiff.Name, formatColumn(colDiff.OldColumn))
+				fmt.Printf("  %s %s: %s\n",
+					output.RedText("-"),
+					output.ColorizeColumnName(colDiff.Name),
+					formatColumn(colDiff.OldColumn))
 			case ChangeTypeModified:
-				fmt.Printf("  ~ %s:\n", colDiff.Name)
+				fmt.Printf("  %s %s:\n",
+					output.YellowText("~"),
+					output.ColorizeColumnName(colDiff.Name))
 				printColumnChanges(colDiff.Changes)
 			}
 		}
@@ -145,33 +158,33 @@ func formatColumn(col *parser.ColumnDefinition) string {
 		return ""
 	}
 
-	result := col.DataType.Name
+	result := output.ColorizeDataType(col.DataType.Name)
 	if len(col.DataType.Parameters) > 0 {
-		result += fmt.Sprintf("(%s)", strings.Join(col.DataType.Parameters, ","))
+		result += fmt.Sprintf("(%s)", output.ColorizeNumber(strings.Join(col.DataType.Parameters, ",")))
 	}
 	if col.DataType.Unsigned {
-		result += " UNSIGNED"
+		result += " " + output.BlueText("UNSIGNED")
 	}
 	if col.DataType.Zerofill {
-		result += " ZEROFILL"
+		result += " " + output.BlueText("ZEROFILL")
 	}
 	if col.Nullable != nil && !*col.Nullable {
-		result += " NOT NULL"
+		result += " " + output.BlueText("NOT NULL")
 	}
 	if col.AutoIncrement {
-		result += " AUTO_INCREMENT"
+		result += " " + output.BlueText("AUTO_INCREMENT")
 	}
 	if col.Unique {
-		result += " UNIQUE"
+		result += " " + output.BlueText("UNIQUE")
 	}
 	if col.PrimaryKey {
-		result += " PRIMARY KEY"
+		result += " " + output.BlueText("PRIMARY KEY")
 	}
 	if col.DefaultValue != nil {
-		result += fmt.Sprintf(" DEFAULT %s", *col.DefaultValue)
+		result += fmt.Sprintf(" %s %s", output.BlueText("DEFAULT"), output.ColorizeString(*col.DefaultValue))
 	}
 	if col.Comment != nil {
-		result += fmt.Sprintf(" COMMENT '%s'", *col.Comment)
+		result += fmt.Sprintf(" %s %s", output.BlueText("COMMENT"), output.ColorizeString("'"+*col.Comment+"'"))
 	}
 	return result
 }

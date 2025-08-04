@@ -26,16 +26,56 @@ func (a *TableDiffAnalyzer) CompareTables(oldTable, newTable *parser.CreateTable
 		ForeignKeyDiffs: []ForeignKeyDiff{},
 	}
 
-	// Check table name change
-	diff.TableNameChanged = oldTable.TableName != newTable.TableName
+	// Handle nil tables gracefully
+	if oldTable == nil && newTable == nil {
+		return diff
+	}
+
+	// Check table name change (only if both tables exist)
+	if oldTable != nil && newTable != nil {
+		diff.TableNameChanged = oldTable.TableName != newTable.TableName
+	}
+
+	// Get table components safely
+	var oldColumns []parser.ColumnDefinition
+	var oldPK *parser.PrimaryKeyDefinition
+	var oldIndexes []parser.IndexDefinition
+	var oldFKs []parser.ForeignKeyDefinition
+	var oldOptions *parser.TableOptions
+	var oldPartitions *parser.PartitionOptions
+
+	var newColumns []parser.ColumnDefinition
+	var newPK *parser.PrimaryKeyDefinition
+	var newIndexes []parser.IndexDefinition
+	var newFKs []parser.ForeignKeyDefinition
+	var newOptions *parser.TableOptions
+	var newPartitions *parser.PartitionOptions
+
+	if oldTable != nil {
+		oldColumns = oldTable.Columns
+		oldPK = oldTable.PrimaryKey
+		oldIndexes = oldTable.Indexes
+		oldFKs = oldTable.ForeignKeys
+		oldOptions = oldTable.TableOptions
+		oldPartitions = oldTable.PartitionOptions
+	}
+
+	if newTable != nil {
+		newColumns = newTable.Columns
+		newPK = newTable.PrimaryKey
+		newIndexes = newTable.Indexes
+		newFKs = newTable.ForeignKeys
+		newOptions = newTable.TableOptions
+		newPartitions = newTable.PartitionOptions
+	}
 
 	// Compare each component
-	diff.ColumnDiffs = a.compareColumns(oldTable.Columns, newTable.Columns)
-	diff.PrimaryKeyDiff = a.comparePrimaryKeys(oldTable.PrimaryKey, newTable.PrimaryKey)
-	diff.IndexDiffs = a.compareIndexes(oldTable.Indexes, newTable.Indexes)
-	diff.ForeignKeyDiffs = a.compareForeignKeys(oldTable.ForeignKeys, newTable.ForeignKeys)
-	diff.TableOptionsDiff = a.compareTableOptions(oldTable.TableOptions, newTable.TableOptions)
-	diff.PartitionDiff = a.comparePartitions(oldTable.PartitionOptions, newTable.PartitionOptions)
+	diff.ColumnDiffs = a.compareColumns(oldColumns, newColumns)
+	diff.PrimaryKeyDiff = a.comparePrimaryKeys(oldPK, newPK)
+	diff.IndexDiffs = a.compareIndexes(oldIndexes, newIndexes)
+	diff.ForeignKeyDiffs = a.compareForeignKeys(oldFKs, newFKs)
+	diff.TableOptionsDiff = a.compareTableOptions(oldOptions, newOptions)
+	diff.PartitionDiff = a.comparePartitions(oldPartitions, newPartitions)
 
 	// Update counters
 	a.updateCounters(diff)

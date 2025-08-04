@@ -136,7 +136,7 @@ func TestColumnModifiers(t *testing.T) {
 
 	// Check DEFAULT
 	nameCol := table.Columns[2]
-	if nameCol.DefaultValue == nil || *nameCol.DefaultValue != "Unknown" {
+	if nameCol.DefaultValue == nil || *nameCol.DefaultValue != "'Unknown'" {
 		t.Errorf("Expected name column default value to be 'Unknown', got %v", nameCol.DefaultValue)
 	}
 

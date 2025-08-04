@@ -9,6 +9,7 @@ import (
 
 	"github.com/n0madic/mysql-diff/pkg/alter"
 	"github.com/n0madic/mysql-diff/pkg/diff"
+	"github.com/n0madic/mysql-diff/pkg/output"
 	"github.com/n0madic/mysql-diff/pkg/parser"
 )
 
@@ -23,6 +24,8 @@ func main() {
 	tableName := flag.String("table", "", "Compare only specific table")
 	detailedMode := flag.Bool("detailed", false, "Output detailed diff report")
 	jsonMode := flag.Bool("json", false, "Output results in JSON format")
+	rollbackMode := flag.Bool("rollback", false, "Generate rollback statements (reverse the comparison)")
+	color := flag.Bool("color", false, "Colored output")
 
 	// Custom usage message
 	flag.Usage = func() {
@@ -36,6 +39,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "  %s --table users old_schema.sql new_schema.sql      # Compare only 'users' table\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s --detailed old_schema.sql new_schema.sql         # Show detailed diff report\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s --json old_schema.sql new_schema.sql             # Output JSON format\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s --rollback old_schema.sql new_schema.sql         # Generate rollback statements\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "Output modes:\n")
 		fmt.Fprintf(os.Stderr, "  default:           Generate ALTER statements for migration\n")
 		fmt.Fprintf(os.Stderr, "  --detailed:        Human-readable diff report\n")
@@ -43,6 +47,11 @@ func main() {
 	}
 
 	flag.Parse()
+
+	// Configure color output
+	if *color {
+		output.SetColorsEnabled(true)
+	}
 
 	// Combine verbose flags
 	isVerbose := *verbose || *verboseLong
@@ -69,38 +78,54 @@ func main() {
 		os.Exit(1)
 	}
 
-	oldSchemaPath := flag.Arg(0)
-	newSchemaPath := flag.Arg(1)
+	firstSchemaPath := flag.Arg(0)
+	secondSchemaPath := flag.Arg(1)
+
+	// In rollback mode, we swap the schemas to generate reverse migrations
+	var oldSchemaPath, newSchemaPath string
+	if *rollbackMode {
+		oldSchemaPath = secondSchemaPath
+		newSchemaPath = firstSchemaPath
+	} else {
+		oldSchemaPath = firstSchemaPath
+		newSchemaPath = secondSchemaPath
+	}
 
 	// Read and parse old schema
 	oldSQL, err := os.ReadFile(oldSchemaPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: Old schema file '%s' not found\n", oldSchemaPath)
+		fmt.Fprintf(os.Stderr, "Error: Schema file '%s' not found\n", oldSchemaPath)
 		os.Exit(1)
 	}
 
 	oldTables, err := parser.ParseSQLDump(string(oldSQL))
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing old schema: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error parsing schema: %v\n", err)
 		os.Exit(1)
 	}
 
 	// Read and parse new schema
 	newSQL, err := os.ReadFile(newSchemaPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: New schema file '%s' not found\n", newSchemaPath)
+		fmt.Fprintf(os.Stderr, "Error: Schema file '%s' not found\n", newSchemaPath)
 		os.Exit(1)
 	}
 
 	newTables, err := parser.ParseSQLDump(string(newSQL))
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing new schema: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error parsing schema: %v\n", err)
 		os.Exit(1)
 	}
 
 	if isVerbose {
-		fmt.Fprintf(os.Stderr, "-- Parsed %d tables from old schema\n", len(oldTables))
-		fmt.Fprintf(os.Stderr, "-- Parsed %d tables from new schema\n", len(newTables))
+		if *rollbackMode {
+			fmt.Fprintf(os.Stderr, "-- Rollback mode: generating reverse migrations\n")
+			fmt.Fprintf(os.Stderr, "-- Source schema: %s (%d tables)\n", newSchemaPath, len(newTables))
+			fmt.Fprintf(os.Stderr, "-- Target schema: %s (%d tables)\n", oldSchemaPath, len(oldTables))
+		} else {
+			fmt.Fprintf(os.Stderr, "-- Parsed %d tables from old schema\n", len(oldTables))
+			fmt.Fprintf(os.Stderr, "-- Parsed %d tables from new schema\n", len(newTables))
+		}
 	}
 
 	// Filter tables by name if specified
@@ -180,9 +205,9 @@ func main() {
 		os.Exit(0)
 	}
 
-	// Print all ALTER statements
+	// Print all ALTER statements with syntax highlighting
 	for _, statement := range allStatements {
-		fmt.Println(statement)
+		fmt.Println(output.ColorizeSQLStatement(statement))
 	}
 
 	if isVerbose {

@@ -41,6 +41,7 @@ const (
 	BINARY
 	VARBINARY
 	BIT
+	BOOLEAN
 	// Geometric types
 	GEOMETRY
 	POINT
@@ -66,6 +67,10 @@ const (
 	STORED
 	UNSIGNED
 	ZEROFILL
+
+	// Boolean values
+	TRUE
+	FALSE
 
 	// Index types
 	INDEX
@@ -151,6 +156,7 @@ const (
 	SEMICOLON
 	EQUALS
 	DOT
+	MINUS
 
 	// Literals
 	IDENTIFIER
@@ -206,6 +212,7 @@ func (t TokenType) String() string {
 		BINARY:             "BINARY",
 		VARBINARY:          "VARBINARY",
 		BIT:                "BIT",
+		BOOLEAN:            "BOOLEAN",
 		GEOMETRY:           "GEOMETRY",
 		POINT:              "POINT",
 		LINESTRING:         "LINESTRING",
@@ -228,6 +235,8 @@ func (t TokenType) String() string {
 		STORED:             "STORED",
 		UNSIGNED:           "UNSIGNED",
 		ZEROFILL:           "ZEROFILL",
+		TRUE:               "TRUE",
+		FALSE:              "FALSE",
 		INDEX:              "INDEX",
 		FULLTEXT:           "FULLTEXT",
 		SPATIAL:            "SPATIAL",
@@ -299,6 +308,7 @@ func (t TokenType) String() string {
 		SEMICOLON:          ";",
 		EQUALS:             "=",
 		DOT:                ".",
+		MINUS:              "-",
 		IDENTIFIER:         "IDENTIFIER",
 		STRING:             "STRING",
 		NUMBER:             "NUMBER",

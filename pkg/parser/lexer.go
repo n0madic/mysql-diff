@@ -64,6 +64,7 @@ func NewMySQLLexer(text string) *MySQLLexer {
 		"BINARY":             BINARY,
 		"VARBINARY":          VARBINARY,
 		"BIT":                BIT,
+		"BOOLEAN":            BOOLEAN,
 		"GEOMETRY":           GEOMETRY,
 		"POINT":              POINT,
 		"LINESTRING":         LINESTRING,
@@ -86,6 +87,8 @@ func NewMySQLLexer(text string) *MySQLLexer {
 		"STORED":             STORED,
 		"UNSIGNED":           UNSIGNED,
 		"ZEROFILL":           ZEROFILL,
+		"TRUE":               TRUE,
+		"FALSE":              FALSE,
 		"INDEX":              INDEX,
 		"FULLTEXT":           FULLTEXT,
 		"SPATIAL":            SPATIAL,
@@ -269,11 +272,41 @@ func (l *MySQLLexer) readString() string {
 	l.advance() // Skip opening quote
 
 	value := ""
-	for l.currentChar != nil && *l.currentChar != quote {
-		if *l.currentChar == '\\' {
+	for l.currentChar != nil {
+		if *l.currentChar == quote {
+			// Check if this is an escaped quote (doubled quote)
+			next := l.peek()
+			if next != nil && *next == quote {
+				// This is a doubled quote, preserve both quotes in value
+				value += string(quote) + string(quote)
+				l.advance() // Skip first quote
+				l.advance() // Skip second quote
+			} else {
+				// This is the closing quote
+				break
+			}
+		} else if *l.currentChar == '\\' {
+			// Handle backslash escapes
 			l.advance()
 			if l.currentChar != nil {
-				value += string(*l.currentChar)
+				switch *l.currentChar {
+				case 'n':
+					value += "\n"
+				case 't':
+					value += "\t"
+				case 'r':
+					value += "\r"
+				case '\\':
+					value += "\\"
+				case '\'':
+					value += "'"
+				case '"':
+					value += "\""
+				case '0':
+					value += "\000"
+				default:
+					value += string(*l.currentChar)
+				}
 				l.advance()
 			}
 		} else {
@@ -286,12 +319,20 @@ func (l *MySQLLexer) readString() string {
 		l.advance() // Skip closing quote
 	}
 
-	return value
+	// Return the string with surrounding quotes to preserve original format
+	return string(quote) + value + string(quote)
 }
 
 // readNumber reads numeric literals
 func (l *MySQLLexer) readNumber() string {
 	value := ""
+
+	// Handle minus sign for negative numbers
+	if l.currentChar != nil && *l.currentChar == '-' {
+		value += string(*l.currentChar)
+		l.advance()
+	}
+
 	for l.currentChar != nil && (unicode.IsDigit(*l.currentChar) || *l.currentChar == '.') {
 		value += string(*l.currentChar)
 		l.advance()
@@ -384,6 +425,21 @@ func (l *MySQLLexer) GetNextToken() Token {
 			}
 		}
 
+		// Handle negative numbers
+		if *l.currentChar == '-' {
+			next := l.peek()
+			if next != nil && unicode.IsDigit(*next) {
+				// This is a negative number
+				return Token{
+					Type:     NUMBER,
+					Value:    l.readNumber(),
+					Position: l.pos,
+					Line:     l.line,
+					Column:   l.column,
+				}
+			}
+		}
+
 		if unicode.IsLetter(*l.currentChar) || *l.currentChar == '_' {
 			value := l.readIdentifier()
 			tokenType := IDENTIFIER
@@ -407,6 +463,7 @@ func (l *MySQLLexer) GetNextToken() Token {
 			';': SEMICOLON,
 			'=': EQUALS,
 			'.': DOT,
+			'-': MINUS,
 		}
 
 		if tokenType, exists := charTokens[*l.currentChar]; exists {

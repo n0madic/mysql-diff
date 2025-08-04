@@ -89,8 +89,8 @@ func (a *TableDiffAnalyzer) comparePrimaryKeys(oldPK, newPK *parser.PrimaryKeyDe
 func (a *TableDiffAnalyzer) compareIndexes(oldIndexes, newIndexes []parser.IndexDefinition) []IndexDiff {
 	var diffs []IndexDiff
 
-	// Create maps for comparison (using name + columns as key since name can be nil)
-	indexKey := func(idx parser.IndexDefinition) string {
+	// Helper functions for creating keys
+	exactKey := func(idx parser.IndexDefinition) string {
 		cols := make([]string, len(idx.Columns))
 		for i, col := range idx.Columns {
 			cols[i] = col.Name
@@ -102,47 +102,43 @@ func (a *TableDiffAnalyzer) compareIndexes(oldIndexes, newIndexes []parser.Index
 		return fmt.Sprintf("%s:%s:%s", name, strings.Join(cols, ":"), idx.IndexType)
 	}
 
-	oldIndexesMap := make(map[string]parser.IndexDefinition)
-	newIndexesMap := make(map[string]parser.IndexDefinition)
+	structuralKey := func(idx parser.IndexDefinition) string {
+		cols := make([]string, len(idx.Columns))
+		for i, col := range idx.Columns {
+			cols[i] = col.Name
+		}
+		return fmt.Sprintf("%s:%s", strings.Join(cols, ":"), idx.IndexType)
+	}
+
+	// Maps for exact matches
+	oldExactMap := make(map[string]parser.IndexDefinition)
+	newExactMap := make(map[string]parser.IndexDefinition)
+
+	// Maps for structural matches (for detecting renames)
+	oldStructuralMap := make(map[string][]parser.IndexDefinition)
+	newStructuralMap := make(map[string][]parser.IndexDefinition)
 
 	for _, idx := range oldIndexes {
-		oldIndexesMap[indexKey(idx)] = idx
+		exactKey := exactKey(idx)
+		structKey := structuralKey(idx)
+		oldExactMap[exactKey] = idx
+		oldStructuralMap[structKey] = append(oldStructuralMap[structKey], idx)
 	}
 	for _, idx := range newIndexes {
-		newIndexesMap[indexKey(idx)] = idx
+		exactKey := exactKey(idx)
+		structKey := structuralKey(idx)
+		newExactMap[exactKey] = idx
+		newStructuralMap[structKey] = append(newStructuralMap[structKey], idx)
 	}
 
-	// Find all index keys
-	allIndexKeys := make(map[string]bool)
-	for key := range oldIndexesMap {
-		allIndexKeys[key] = true
-	}
-	for key := range newIndexesMap {
-		allIndexKeys[key] = true
-	}
+	// Track processed indexes to avoid duplicates
+	processedOld := make(map[string]bool)
+	processedNew := make(map[string]bool)
 
-	for idxKey := range allIndexKeys {
-		oldIdx, hasOld := oldIndexesMap[idxKey]
-		newIdx, hasNew := newIndexesMap[idxKey]
-
-		if !hasOld {
-			// Index added
-			diffs = append(diffs, IndexDiff{
-				Name:       newIdx.Name,
-				ChangeType: ChangeTypeAdded,
-				NewIndex:   &newIdx,
-				Changes:    &IndexChanges{},
-			})
-		} else if !hasNew {
-			// Index removed
-			diffs = append(diffs, IndexDiff{
-				Name:       oldIdx.Name,
-				ChangeType: ChangeTypeRemoved,
-				OldIndex:   &oldIdx,
-				Changes:    &IndexChanges{},
-			})
-		} else {
-			// Index exists in both, check for changes
+	// First pass: find exact matches
+	for exactKey, oldIdx := range oldExactMap {
+		if newIdx, exists := newExactMap[exactKey]; exists {
+			// Exact match found, check for changes
 			changes := a.compareIndexDefinitions(oldIdx, newIdx)
 			if changes.HasChanges() {
 				diffs = append(diffs, IndexDiff{
@@ -153,6 +149,75 @@ func (a *TableDiffAnalyzer) compareIndexes(oldIndexes, newIndexes []parser.Index
 					Changes:    changes,
 				})
 			}
+			processedOld[exactKey] = true
+			processedNew[exactKey] = true
+		}
+	}
+
+	// Second pass: find potential renames (same structure, different name)
+	for structKey, oldIdxList := range oldStructuralMap {
+		if newIdxList, exists := newStructuralMap[structKey]; exists {
+			// Find unprocessed indexes with same structure
+			var unprocessedOld, unprocessedNew []parser.IndexDefinition
+
+			for _, oldIdx := range oldIdxList {
+				if !processedOld[exactKey(oldIdx)] {
+					unprocessedOld = append(unprocessedOld, oldIdx)
+				}
+			}
+
+			for _, newIdx := range newIdxList {
+				if !processedNew[exactKey(newIdx)] {
+					unprocessedNew = append(unprocessedNew, newIdx)
+				}
+			}
+
+			// Match unprocessed indexes (treat as renames)
+			minLen := len(unprocessedOld)
+			if len(unprocessedNew) < minLen {
+				minLen = len(unprocessedNew)
+			}
+
+			for i := 0; i < minLen; i++ {
+				oldIdx := unprocessedOld[i]
+				newIdx := unprocessedNew[i]
+
+				// This is a rename - treat as modification
+				changes := a.compareIndexDefinitions(oldIdx, newIdx)
+				diffs = append(diffs, IndexDiff{
+					Name:       oldIdx.Name,
+					ChangeType: ChangeTypeModified,
+					OldIndex:   &oldIdx,
+					NewIndex:   &newIdx,
+					Changes:    changes,
+				})
+
+				processedOld[exactKey(oldIdx)] = true
+				processedNew[exactKey(newIdx)] = true
+			}
+		}
+	}
+
+	// Third pass: handle remaining unprocessed indexes as additions/removals
+	for exactKey, oldIdx := range oldExactMap {
+		if !processedOld[exactKey] {
+			diffs = append(diffs, IndexDiff{
+				Name:       oldIdx.Name,
+				ChangeType: ChangeTypeRemoved,
+				OldIndex:   &oldIdx,
+				Changes:    &IndexChanges{},
+			})
+		}
+	}
+
+	for exactKey, newIdx := range newExactMap {
+		if !processedNew[exactKey] {
+			diffs = append(diffs, IndexDiff{
+				Name:       newIdx.Name,
+				ChangeType: ChangeTypeAdded,
+				NewIndex:   &newIdx,
+				Changes:    &IndexChanges{},
+			})
 		}
 	}
 

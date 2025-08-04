@@ -264,9 +264,13 @@ func (p *MySQLCreateTableParser) parseColumnDefinition() (ColumnDefinition, erro
 			column.Nullable = &nullable
 		} else if p.match(DEFAULT) {
 			p.advance()
-			defaultValue := p.currentToken.Value
+			// Parse default value expression (can be multiple tokens)
+			defaultValue := ""
+			if p.match(STRING, NUMBER, NULL, TRUE, FALSE, IDENTIFIER) {
+				defaultValue = p.currentToken.Value
+				p.advance()
+			}
 			column.DefaultValue = &defaultValue
-			p.advance()
 		} else if p.match(AUTO_INCREMENT) {
 			p.advance()
 			column.AutoIncrement = true
@@ -352,6 +356,16 @@ func (p *MySQLCreateTableParser) parseColumnDefinition() (ColumnDefinition, erro
 			p.advance()
 			visible := false
 			column.Visible = &visible
+		} else if p.match(ON) {
+			p.advance()
+			if p.match(UPDATE) {
+				p.advance()
+				// Skip the ON UPDATE expression for now
+				// This is typically CURRENT_TIMESTAMP
+				if p.match(IDENTIFIER) {
+					p.advance()
+				}
+			}
 		} else {
 			// Skip unknown attributes
 			p.advance()
@@ -368,7 +382,7 @@ func (p *MySQLCreateTableParser) parseDataType() (DataType, error) {
 	// Data type name
 	if !p.match(INT, TINYINT, SMALLINT, MEDIUMINT, BIGINT, VARCHAR, CHAR, TEXT,
 		DECIMAL, FLOAT, DOUBLE, DATE, DATETIME, TIMESTAMP, TIME, YEAR, BLOB,
-		JSON, ENUM, SET, BINARY, VARBINARY, BIT, GEOMETRY, POINT, LINESTRING, POLYGON) {
+		JSON, ENUM, SET, BINARY, VARBINARY, BIT, BOOLEAN, GEOMETRY, POINT, LINESTRING, POLYGON) {
 		return dataType, fmt.Errorf("expected data type, got %s", p.currentToken.Type.String())
 	}
 

@@ -309,10 +309,10 @@ func TestColumnDefaultValueChange(t *testing.T) {
 	}
 
 	defaultChange := colDiff.Changes.DefaultValue
-	if defaultChange.Old != "active" {
+	if defaultChange.Old != "'active'" {
 		t.Errorf("Expected old default value 'active', got '%v'", defaultChange.Old)
 	}
-	if defaultChange.New != "pending" {
+	if defaultChange.New != "'pending'" {
 		t.Errorf("Expected new default value 'pending', got '%v'", defaultChange.New)
 	}
 }
@@ -773,7 +773,7 @@ func TestMultipleTableOptionsChanges(t *testing.T) {
 	if changes.Comment == nil {
 		t.Error("Expected comment change in table options diff")
 	}
-	if changes.Comment.Old != "Old table" || changes.Comment.New != "New table" {
+	if changes.Comment.Old != "'Old table'" || changes.Comment.New != "'New table'" {
 		t.Errorf("Expected comment change 'Old table'->'New table', got %v->%v", changes.Comment.Old, changes.Comment.New)
 	}
 

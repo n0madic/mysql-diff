@@ -19,10 +19,30 @@ func NewStatementGenerator() *StatementGenerator {
 // GenerateAlterStatements generates all ALTER statements needed to transform old table to new table
 func (g *StatementGenerator) GenerateAlterStatements(tableDiff *diff.TableDiff) []string {
 	statements := []string{}
-	tableName := tableDiff.OldTable.TableName
+
+	// Handle nil input gracefully
+	if tableDiff == nil {
+		return statements
+	}
+
+	// If no changes, return empty
+	if !tableDiff.HasChanges() {
+		return statements
+	}
+
+	// Determine table name for ALTER statements
+	var tableName string
+	if tableDiff.OldTable != nil {
+		tableName = tableDiff.OldTable.TableName
+	} else if tableDiff.NewTable != nil {
+		tableName = tableDiff.NewTable.TableName
+	} else {
+		// Both tables are nil, nothing to do
+		return statements
+	}
 
 	// Handle table rename first if needed
-	if tableDiff.TableNameChanged {
+	if tableDiff.TableNameChanged && tableDiff.NewTable != nil {
 		statements = append(statements, fmt.Sprintf("ALTER TABLE `%s` RENAME TO `%s`;", tableName, tableDiff.NewTable.TableName))
 		tableName = tableDiff.NewTable.TableName // Use new name for subsequent operations
 	}
